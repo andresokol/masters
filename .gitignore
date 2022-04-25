@@ -1,0 +1,11 @@
+venv
+.idea
+result
+
+__pycache__
+.ipynb_checkpoints
+
+face_geometry.py
+scene_template.blend
+torch_resnets.py
+export.blend
