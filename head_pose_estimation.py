@@ -186,6 +186,10 @@ def offline():
         if not os.path.exists(target_dir):
             os.mkdir(target_dir)
 
+        if os.path.exists(f"{target_dir}/{img_name}_base.png") and os.path.exists(
+                f"{target_dir}/{img_name}_structure.png"):
+            continue
+
         try:
             box = get_face_box(image)
             cv2.imwrite(

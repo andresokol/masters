@@ -8,7 +8,6 @@ import time
 import tqdm
 from PIL import Image
 
-
 KERNELS = [
     np.array(
         [
@@ -65,11 +64,15 @@ def get_direction_weights(image: np.ndarray, kernel: np.ndarray) -> np.ndarray:
 #     magnitude = np.sqrt(hor_grad ** 2 + ver_grad ** 2)
 #     return magnitude
 
-
-def extract_structure_data(filepath: str) -> np.ndarray:
-    image = cv2.imread(filepath)
+def read_original(img_dir, img_name) -> np.ndarray:
+    image = cv2.imread(f"{FFHQ_DIR}/{img_dir}/{img_name}.png")
     image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+    image = cv2.resize(image, (512, 512))
+    return image
 
+
+def extract_structure_data(original) -> np.ndarray:
+    image = np.copy(original)
     direction_weights = np.dstack(
         (
             get_direction_weights(image, KERNELS[0]),
@@ -101,7 +104,6 @@ def extract_structure_data(filepath: str) -> np.ndarray:
     # image = cv2.boxFilter(image, -1, (16, 16))
 
     # downsampled = cv2.resize(image, (64, 64))
-    # image = cv2.resize(downsampled, image.shape[:2])
 
     return image
 
@@ -111,13 +113,13 @@ def apply_threshold(image: np.ndarray, threshold: float) -> np.ndarray:
     return (normalized > threshold).astype(int) * 255
 
 
-def process(img_dir, img_name) -> np.ndarray:
-    image = extract_structure_data(f"{FFHQ_DIR}/{img_dir}/{img_name}.png")
+def process(image: np.ndarray, img_dir, img_name) -> np.ndarray:
+    image = extract_structure_data(image)
 
     mask = cv2.imread(f"{PREPARED_ROOT}/{img_dir}/{img_name}_mask.png")
 
     hair_mask, _, _ = cv2.split(mask)
-    hair_mask = cv2.resize(hair_mask, image.shape[:2])
+    # hair_mask = cv2.resize(hair_mask, image.shape[:2])
     hair_mask = apply_threshold(hair_mask, 0.4)
 
     image = np.dstack((image, hair_mask.astype("uint8")))
@@ -125,13 +127,8 @@ def process(img_dir, img_name) -> np.ndarray:
     return image
 
 
-def apply_on_original(img_dir: str, img_name: str, image: np.ndarray) -> np.ndarray:
-    bg = cv2.cvtColor(
-        cv2.imread(f"{FFHQ_DIR}/{img_dir}/{img_name}.png"),
-        cv2.COLOR_RGB2RGBA,
-    )
-
-    bg_pil = Image.fromarray(bg)
+def apply_on_original(bg: np.ndarray, image: np.ndarray) -> np.ndarray:
+    bg_pil = Image.fromarray(bg).convert("RGBA")
     image_pil = Image.fromarray(image)
     composite = Image.alpha_composite(bg_pil, image_pil)
     return np.asarray(composite)  # type: ignore
@@ -153,12 +150,17 @@ def main():
         if not os.path.exists(target_dir):
             os.mkdir(target_dir)
 
-        image = process(img_dir, img_name)
-        cv2.imwrite(
-            f"{target_dir}/{img_name}_structure_masked.png",
-            image,
-        )
-        structure_overlayed = apply_on_original(img_dir, img_name, image)
+        if os.path.exists(f"{target_dir}/{img_name}_structure_overlayed.png"):
+            continue
+
+        original = read_original(img_dir, img_name)
+
+        image = process(original, img_dir, img_name)
+        # cv2.imwrite(
+        #     f"{target_dir}/{img_name}_structure_masked.png",
+        #     image,
+        # )
+        structure_overlayed = apply_on_original(original, image)
         cv2.imwrite(
             f"{target_dir}/{img_name}_structure_overlayed.png",
             structure_overlayed,

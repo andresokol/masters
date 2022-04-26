@@ -1,6 +1,7 @@
 venv
 .idea
 result
+runs
 
 __pycache__
 .ipynb_checkpoints
