@@ -28,7 +28,7 @@ def get_landmarks(image: np.ndarray) -> tp.Optional[np.ndarray]:
     image.flags.writeable = False
     landmarks = face_mesh.process(image).multi_face_landmarks  # type: ignore
     if not landmarks:
-        return None
+        raise Exception("no face found")
     landmark = landmarks[0].landmark
     image.flags.writeable = True
     return np.array([[x.x, x.y, x.z] for x in landmark])
