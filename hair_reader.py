@@ -938,31 +938,31 @@ def draw(filepath: str):
 
 
 def main():
-    STRANDS_DIR = os.path.abspath('../mastersdata/models/hairsalon/')
-    strand_names = [name[:-5] for name in os.listdir(STRANDS_DIR) if name.endswith('.data')]
-    strand_names.sort()
-    print(f"Found {len(strand_names)} strands files")
+    # STRANDS_DIR = os.path.abspath('../mastersdata/models/hairsalon/')
+    # strand_names = [name[:-5] for name in os.listdir(STRANDS_DIR) if name.endswith('.data')]
+    # strand_names.sort()
+    # print(f"Found {len(strand_names)} strands files")
 
     mat = create_material()
     setup_render_engine()
     setup_compositor()
 
-    for strand_name in tqdm.tqdm(strand_names[:]):
-        strands = read_hair(os.path.join(STRANDS_DIR, f'{strand_name}.data'))
-
-        obj = load_to_object(strands[::])
-        bpy.context.collection.objects.link(obj)
-        bpy.context.view_layer.objects.active = obj
-
-        obj.location = (0, 1, -1.745)
-        obj.data.materials.append(mat)
-
-        render(strand_name)
-
-        bpy.data.objects.remove(obj)
-        for block in bpy.data.meshes:
-            if block.users == 0:
-                bpy.data.meshes.remove(block)
+    # for strand_name in tqdm.tqdm(strand_names[:]):
+    #     strands = read_hair(os.path.join(STRANDS_DIR, f'{strand_name}.data'))
+    #
+    #     obj = load_to_object(strands[::])
+    #     bpy.context.collection.objects.link(obj)
+    #     bpy.context.view_layer.objects.active = obj
+    #
+    #     obj.location = (0, 1, -1.745)
+    #     obj.data.materials.append(mat)
+    #
+    #     render(strand_name)
+    #
+    #     bpy.data.objects.remove(obj)
+    #     for block in bpy.data.meshes:
+    #         if block.users == 0:
+    #             bpy.data.meshes.remove(block)
 
 
 main()
