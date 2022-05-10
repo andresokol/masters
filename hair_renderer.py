@@ -1,3 +1,4 @@
+import csv
 import math
 import os
 import random
@@ -9,6 +10,8 @@ sys.path.append("/home/andresokol/code/masters/venv/lib/python3.8/site-packages"
 
 import bpy  # noqa: E402
 import bmesh
+import mathutils
+
 import tqdm  # noqa: E402
 
 PointT = tp.Tuple[float, float, float]
@@ -827,8 +830,8 @@ def setup_render_engine():
     scene.cycles.preview_samples = 32
     scene.cycles.samples = 64
     scene.cycles.max_bounces = 4
-    scene.render.resolution_x = 1024
-    scene.render.resolution_y = 1024
+    scene.render.resolution_x = 512
+    scene.render.resolution_y = 512
     scene.render.image_settings.file_format = "PNG"
 
     # data required by compositor
@@ -907,11 +910,11 @@ def setup_compositor():
 
 
 def render(filename: str):
-    RESULT_DIR = "./result"
+    RESULT_DIR = "./result2"
     print("Rendering...")
-    bpy.context.scene.render.engine = "CYCLES"
-    bpy.context.scene.render.filepath = f"{RESULT_DIR}/{filename}_base.png"
-    bpy.ops.render.render(write_still=1)
+    # bpy.context.scene.render.engine = "CYCLES"
+    # bpy.context.scene.render.filepath = f"{RESULT_DIR}/{filename}_base.png"
+    # bpy.ops.render.render(write_still=1)
 
     bpy.context.scene.render.engine = "BLENDER_EEVEE"
     bpy.context.scene.render.filepath = f"{RESULT_DIR}/{filename}_structure.png"
@@ -937,32 +940,59 @@ def draw(filepath: str):
     render("test")
 
 
+def batch(iterable: tp.Sized, step: int = 1):
+    length = len(iterable)
+    for ndx in range(0, length, step):
+        yield iterable[ndx:min(ndx + step, length)]
+
+
 def main():
-    # STRANDS_DIR = os.path.abspath('../mastersdata/models/hairsalon/')
-    # strand_names = [name[:-5] for name in os.listdir(STRANDS_DIR) if name.endswith('.data')]
-    # strand_names.sort()
-    # print(f"Found {len(strand_names)} strands files")
+    STRANDS_DIR = os.path.abspath('../mastersdata/models/hairsalon/')
+    strand_names = [name[:-5] for name in os.listdir(STRANDS_DIR) if name.endswith('.data')]
+    strand_names.sort()
+    print(f"Found {len(strand_names)} strands files")
 
     mat = create_material()
     setup_render_engine()
     setup_compositor()
 
-    # for strand_name in tqdm.tqdm(strand_names[:]):
-    #     strands = read_hair(os.path.join(STRANDS_DIR, f'{strand_name}.data'))
-    #
-    #     obj = load_to_object(strands[::])
-    #     bpy.context.collection.objects.link(obj)
-    #     bpy.context.view_layer.objects.active = obj
-    #
-    #     obj.location = (0, 1, -1.745)
-    #     obj.data.materials.append(mat)
-    #
-    #     render(strand_name)
-    #
-    #     bpy.data.objects.remove(obj)
-    #     for block in bpy.data.meshes:
-    #         if block.users == 0:
-    #             bpy.data.meshes.remove(block)
+    with open("head_positions.csv") as file:
+        reader = csv.reader(file)
+        head_positions = [row for row in reader]
+    head_positions = head_positions[1:]  # remove header
+    print(f"Read {len(head_positions)} head positions")
+
+    for i, heads_batch in tqdm.tqdm(enumerate(batch(head_positions, step=1000))):
+        strands = read_hair(os.path.join(STRANDS_DIR, f'{strand_names[i]}.data'))
+
+        obj = load_to_object(strands[::10])
+        bpy.context.collection.objects.link(obj)
+        bpy.context.view_layer.objects.active = obj
+
+        obj.location = (0.00471, 1.08974, -1.745958)
+        obj.data.materials.append(mat)
+
+        bpy.data.objects['Hair'].select_set(True)
+        bpy.context.scene.cursor.location = mathutils.Vector((0.0, 1.0, 0.0))
+        bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
+
+        for position in tqdm.tqdm(heads_batch):
+            imgdir, imgname, *params = position
+            x, y, z, rot_x, rot_y, rot_z = list(map(float, params))
+
+            location = mathutils.Vector((x, y, z))
+            rotation = mathutils.Vector((rot_x, rot_y, rot_z))
+
+            for object_id in ('head_model', 'Torso', 'Hair'):
+                bpy.data.objects[object_id].location = location
+                bpy.data.objects[object_id].rotation_euler = rotation
+
+            render(f"{imgdir}_{imgname}")
+
+        bpy.data.objects.remove(obj)
+        for block in bpy.data.meshes:
+            if block.users == 0:
+                bpy.data.meshes.remove(block)
 
 
 main()
