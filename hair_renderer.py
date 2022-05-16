@@ -6,7 +6,7 @@ import struct
 import sys
 import typing as tp
 
-sys.path.append("/home/andresokol/code/masters/venv/lib/python3.8/site-packages")
+sys.path.append("/home/andresokol/masters/venv/lib/python3.8/site-packages")
 
 import bpy  # noqa: E402
 import bmesh
@@ -16,8 +16,8 @@ import tqdm  # noqa: E402
 
 PointT = tp.Tuple[float, float, float]
 
-STRANDS_DIR = os.path.abspath('../mastersdata/models/hairsalon/')
-RESULT_DIR = "./result2"
+STRANDS_DIR = os.path.abspath('/home/andresokol/hairstyles/hairstyles')
+RESULT_DIR = "/home/andresokol/rendered/v1"
 
 
 class Vector:
@@ -270,7 +270,7 @@ def load_to_object(strands: tp.List[StrandT]):
     invalid_strands_cnt = 0
 
     print("Constructing mesh from strands")
-    for strand in tqdm.tqdm(strands):
+    for strand in strands:
         coords, edges, faces, colors = build_mesh_from_strand(strand)
 
         if not coords:
@@ -512,10 +512,10 @@ def main():
     head_positions = head_positions[1:]  # remove header
     print(f"Read {len(head_positions)} head positions")
 
-    for i, heads_batch in tqdm.tqdm(enumerate(batch(head_positions, step=1))):
-        strands = read_hair(os.path.join(STRANDS_DIR, f'{strand_names[i % len(strand_names)]}.data'))
+    for i, heads_batch in tqdm.tqdm(enumerate(batch(head_positions[::-1], step=200))):
+        strands = read_hair(os.path.join(STRANDS_DIR, f'{strand_names[(-1 -i) % len(strand_names)]}.data'))
 
-        hair_obj = load_to_object(strands[::10])
+        hair_obj = load_to_object(strands[::])
         bpy.context.collection.objects.link(hair_obj)
         bpy.context.view_layer.objects.active = hair_obj
 
