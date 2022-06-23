@@ -39,9 +39,9 @@ KERNELS = [
     ),
 ]
 
-FILE_ROOT = "/home/andresokol/code/mastersdata"
-FFHQ_DIR = f"{FILE_ROOT}/ffhq-dataset/images1024x1024"
-PREPARED_ROOT = f"{FILE_ROOT}/prepared"
+SOURCE_DIR = "/home/andresokol/data/compressed"
+MASK_ROOT = "/home/andresokol/data/masks_v2"
+ORIENTATION_ROOT = "/home/andresokol/data/orientation_v2"
 
 
 def get_direction_weights(image: np.ndarray, kernel: np.ndarray) -> np.ndarray:
@@ -64,48 +64,75 @@ def get_direction_weights(image: np.ndarray, kernel: np.ndarray) -> np.ndarray:
 #     magnitude = np.sqrt(hor_grad ** 2 + ver_grad ** 2)
 #     return magnitude
 
-def read_original(img_dir, img_name) -> np.ndarray:
-    image = cv2.imread(f"{FFHQ_DIR}/{img_dir}/{img_name}.png")
-    image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+
+def read_original(img_dir: str, img_name: str) -> np.ndarray:
+    image = cv2.imread(f"{SOURCE_DIR}/{img_dir}/{img_name}.jpg")
     image = cv2.resize(image, (512, 512))
     return image
 
 
-def extract_structure_data(original) -> np.ndarray:
+def read_mask(img_dir: str, img_name: str) -> np.ndarray:
+    image = cv2.imread(f"{MASK_ROOT}/{img_dir}/{img_name}.png")
+    image = cv2.resize(image, (512, 512))
+    return image
+
+
+def adjust_gamma(image, gamma=1.0):
+    # build a lookup table mapping the pixel values [0, 255] to
+    # their adjusted gamma values
+    invGamma = 1.0 / gamma
+    table = np.array([((i / 255.0) ** invGamma) * 255
+        for i in np.arange(0, 256)]).astype("uint8")
+    # apply gamma correction using the lookup table
+    return cv2.LUT(image, table)
+
+
+def extract_structure_data(original: np.ndarray) -> np.ndarray:
     image = np.copy(original)
-    direction_weights = np.dstack(
-        (
-            get_direction_weights(image, KERNELS[0]),
-            np.maximum(
-                get_direction_weights(image, KERNELS[1]),
-                get_direction_weights(image, KERNELS[3]),
-            ),
-            get_direction_weights(image, KERNELS[2]),
-        )
-    )
-    directions = np.argmax(direction_weights, axis=2)
-    # downsampled = cv2.resize(directions.astype('uint8'), (64, 64))
-    # directions = cv2.resize(downsampled, image.shape[:2])
-    # directions = scipy.ndimage.grey_opening(directions, size=3)
-    # directions = scipy.ndimage.grey_closing(directions, size=3)
-    directions = scipy.ndimage.median_filter(directions, size=3)
+    image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+#     direction_weights = np.dstack(
+#         (
+#             get_direction_weights(image, KERNELS[0]),
+#             np.maximum(
+#                 get_direction_weights(image, KERNELS[1]),
+#                 get_direction_weights(image, KERNELS[3]),
+#             ),
+#             get_direction_weights(image, KERNELS[2]),
+#         )
+#     )
+#     directions = np.argmax(direction_weights, axis=2)
 
-    blue_channel = directions * 127
-    red_channel = 255 - blue_channel
+#     blue_channel = directions * 127
+#     red_channel = 255 - blue_channel
 
-    image = cv2.merge(
-        (
-            red_channel.astype("uint8"),
-            np.zeros(shape=red_channel.shape, dtype="uint8"),
-            blue_channel.astype("uint8"),
-        )
-    )
+    axis_0 = scipy.ndimage.convolve1d(image.astype(float), [-1, 1, 0], axis=0)
+    axis_0 = np.abs(axis_0)
+    
+    axis_1 = scipy.ndimage.convolve1d(image.astype(float), [-1, 1, 0], axis=1)
+    axis_1 = np.abs(axis_1)
+
+    composite = np.dstack([
+        axis_1,
+        np.zeros_like(axis_0),
+        axis_0,
+    ])
+    
+    composite = adjust_gamma(composite.astype('uint8'), gamma=4)
+
+    
+#     image = cv2.merge(
+#         (
+#             red_channel.astype("uint8"),
+#             np.zeros(shape=red_channel.shape, dtype="uint8"),
+#             blue_channel.astype("uint8"),
+#         )
+#     )
 
     # image = cv2.boxFilter(image, -1, (16, 16))
 
     # downsampled = cv2.resize(image, (64, 64))
 
-    return image
+    return composite
 
 
 def apply_threshold(image: np.ndarray, threshold: float) -> np.ndarray:
@@ -113,10 +140,8 @@ def apply_threshold(image: np.ndarray, threshold: float) -> np.ndarray:
     return (normalized > threshold).astype(int) * 255
 
 
-def process(image: np.ndarray, img_dir, img_name) -> np.ndarray:
+def process(image: np.ndarray, mask: np.ndarray) -> np.ndarray:
     image = extract_structure_data(image)
-
-    mask = cv2.imread(f"{PREPARED_ROOT}/{img_dir}/{img_name}_mask.png")
 
     hair_mask, _, _ = cv2.split(mask)
     # hair_mask = cv2.resize(hair_mask, image.shape[:2])
@@ -136,33 +161,34 @@ def apply_on_original(bg: np.ndarray, image: np.ndarray) -> np.ndarray:
 
 def image_paths() -> tp.List[tp.Tuple[str, str]]:
     paths = []
-    for dirname in os.listdir(FFHQ_DIR):
-        for filename in os.listdir(f"{FFHQ_DIR}/{dirname}"):
-            if filename[:5].isdigit() and filename[5:] == ".png":
-                paths.append((dirname, filename[:5]))
+    for dirname in os.listdir(SOURCE_DIR):
+        for filename in os.listdir(f"{SOURCE_DIR}/{dirname}"):
+            if not os.path.exists(f"{MASK_ROOT}/{dirname}/{filename[:-len('.jpg')]}.png"):
+                continue
+            if filename.endswith(".jpg"):
+                paths.append((dirname, filename[:-len(".jpg")]))
+    print(f"Found {len(paths)} images")
     return paths
 
 
 def main():
     # img_dir, img_name = "01000", "01000"
     for img_dir, img_name in tqdm.tqdm(image_paths()):
-        target_dir = f"{PREPARED_ROOT}/{img_dir}"
+        target_dir = f"{ORIENTATION_ROOT}/{img_dir}"
         if not os.path.exists(target_dir):
             os.mkdir(target_dir)
 
-        if os.path.exists(f"{target_dir}/{img_name}_structure_overlayed.png"):
+        if os.path.exists(f"{target_dir}/{img_name}.png"):
             continue
 
         original = read_original(img_dir, img_name)
+        mask = read_mask(img_dir, img_name)
 
-        image = process(original, img_dir, img_name)
-        # cv2.imwrite(
-        #     f"{target_dir}/{img_name}_structure_masked.png",
-        #     image,
-        # )
+        image = process(original, mask)
+
         structure_overlayed = apply_on_original(original, image)
         cv2.imwrite(
-            f"{target_dir}/{img_name}_structure_overlayed.png",
+            f"{target_dir}/{img_name}.png",
             structure_overlayed,
         )
 
